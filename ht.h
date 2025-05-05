@@ -279,6 +279,8 @@ private:
 		size_t numItems_;
 		size_t numDeleted_;
 		double resizeAlpha_;
+		bool suppressResize_;
+		size_t numOccupied_;
 
 };
 
@@ -306,6 +308,8 @@ HashTable<K,V,Prober,Hash,KEqual>::HashTable(
     table_.resize(CAPACITIES[mIndex_], nullptr);
     numItems_ = 0;
     numDeleted_ = 0;
+		numOccupied_=0;
+		suppressResize_ = false;
 }
 
 // To be completed
@@ -336,40 +340,32 @@ size_t HashTable<K,V,Prober,Hash,KEqual>::size() const
 template<typename K, typename V, typename Prober, typename Hash, typename KEqual>
 void HashTable<K,V,Prober,Hash,KEqual>::insert(const ItemType& p)
 {
-		HASH_INDEX_T currCap = CAPACITIES[mIndex_];
-		double porjectedLoad = static_cast<double>(numItems_ + numDeleted_ +1)/static_cast<double>(currCap);
-		if(porjectedLoad >= resizeAlpha_)
+			double projectedLoad = static_cast<double>(numOccupied_ )/CAPACITIES[mIndex_];
+			if(projectedLoad >= resizeAlpha_)
+			{
+				resize();
+			}
+
+
+		HASH_INDEX_T loc = this->probe(p.first);
+		if(loc == npos)
 		{
-			resize();
+			throw std::logic_error("No available slot");
 		}
-
-    HASH_INDEX_T loc = this->probe(p.first);
-    if(loc == npos){
-        throw std::logic_error("No available slot");
-    }
-    if(table_[loc] != nullptr)
-    {
-        if(!table_[loc]->deleted)
-        {
-            table_[loc]->item.second = p.second;
-        }
-        else{
-            table_[loc]->item = p;
-            table_[loc]->deleted = false;
-            numItems_++;
-            numDeleted_--;
-        }
-    }
-    else{
-        table_[loc] = new HashItem(p);
-        numItems_++;
-    }
-
-    // double load = static_cast<double>(numItems_ + numDeleted_) / CAPACITIES[mIndex_];
-    // if(load >= resizeAlpha_)
-    // {
-    //     resize();
-    // }
+		if(table_[loc] == nullptr)
+		{
+				table_[loc] = new HashItem(p);
+				numItems_++;
+				numOccupied_ ++;
+		}
+		else if(table_[loc]->deleted){
+			delete table_[loc];
+			table_[loc] = new HashItem(p);
+			numItems_++;
+		}
+		else{
+			table_[loc]->item.second = p.second;
+		}
 
 }
 
@@ -455,6 +451,8 @@ typename HashTable<K,V,Prober,Hash,KEqual>::HashItem* HashTable<K,V,Prober,Hash,
 }
 
 
+
+
 // To be completed
 template<typename K, typename V, typename Prober, typename Hash, typename KEqual>
 void HashTable<K,V,Prober,Hash,KEqual>::resize()
@@ -471,25 +469,25 @@ void HashTable<K,V,Prober,Hash,KEqual>::resize()
 
 	table_.clear();
 	table_.resize(newCap, nullptr);
+	//size_t oldNumItems = numItems_;
 	numItems_ = 0;
 	numDeleted_ = 0;
+	numOccupied_=0;
 
-	double oldAlpha = resizeAlpha_;
-	resizeAlpha_ = 1.0;
+	bool oldSupress = suppressResize_;
+	suppressResize_ = true;
 
-	for(size_t i = 0; i <oldTable.size(); ++i)
+	//double oldAlpha = resizeAlpha_;
+	for(size_t i = 0; i < oldTable.size(); i++)
 	{
-		if(oldTable[i] != nullptr) 
+		if(oldTable[i] != nullptr && !oldTable[i]->deleted)
 		{
-			if(!oldTable[i]->deleted)
-			{
-				insert(oldTable[i]->item);
-			}
-			delete oldTable[i];
+			insert(oldTable[i]->item);
+			
 		}
+		delete oldTable[i];
 	}
-	resizeAlpha_ = oldAlpha;
-    
+	suppressResize_ = oldSupress;
 }
 
 // Almost complete
